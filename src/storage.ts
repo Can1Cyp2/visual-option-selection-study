@@ -8,15 +8,26 @@ interface StoredEnvelope {
 }
 
 export function saveSession(session: SessionState): void {
-  const payload: StoredEnvelope = {
-    savedAtIso: new Date().toISOString(),
-    session,
+  try {
+    const payload: StoredEnvelope = {
+      savedAtIso: new Date().toISOString(),
+      session,
+    }
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(payload))
+  } catch {
+    return
   }
-  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(payload))
 }
 
 export function loadSession(): SessionState | undefined {
-  const raw = localStorage.getItem(SESSION_STORAGE_KEY)
+  let raw: string | null = null
+
+  try {
+    raw = localStorage.getItem(SESSION_STORAGE_KEY)
+  } catch {
+    return undefined
+  }
+
   if (!raw) return undefined
 
   try {
@@ -29,5 +40,9 @@ export function loadSession(): SessionState | undefined {
 }
 
 export function clearSession(): void {
-  localStorage.removeItem(SESSION_STORAGE_KEY)
+  try {
+    localStorage.removeItem(SESSION_STORAGE_KEY)
+  } catch {
+    return
+  }
 }
