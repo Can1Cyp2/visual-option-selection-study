@@ -7,7 +7,17 @@ import {
   orderToLabel,
   readableCondition,
 } from './experiment'
-import { buildParticipantSummary, downloadTextFile, toCsv, toLikertRows, toTrialRows } from './export'
+import JSZip from 'jszip'
+import {
+  buildCodebookMarkdown,
+  buildExportCodebook,
+  buildParticipantSummary,
+  downloadBlobFile,
+  downloadTextFile,
+  toCsv,
+  toLikertRows,
+  toTrialRows,
+} from './export'
 import { clearSession, loadSession, saveSession } from './storage'
 import type { BlockPlan, BlockLikert, Condition, Demographics, SessionState } from './types'
 
@@ -37,6 +47,7 @@ function defaultDemographics(): Demographics {
 function createSession(args?: {
   participantNumber?: number
   assignedOrder?: Condition[]
+  studyOperator?: string
   stage?: SessionState['stage']
   demographics?: Demographics
   consentGiven?: boolean
@@ -56,6 +67,7 @@ function createSession(args?: {
     version: SESSION_VERSION,
     participantId: buildParticipantId(participantNumber),
     participantNumber,
+    studyOperator: args?.studyOperator,
     assignedOrder,
     stage: args?.stage ?? 'consent',
     consentGiven: args?.consentGiven ?? false,
@@ -71,6 +83,7 @@ function createSession(args?: {
         timestamp_iso: nowIso(),
         payload: {
           assigned_order: orderToLabel(assignedOrder),
+          study_operator: args?.studyOperator ?? '',
           screen_width_px: window.innerWidth,
           screen_height_px: window.innerHeight,
           experiment_design: 'single-factor, three-level within-subjects repeated-measures controlled visual search paradigm',
@@ -88,6 +101,7 @@ export function App() {
   const [mode, setMode] = useState<StartMode>('landing')
   const [session, setSession] = useState<SessionState | undefined>()
   const [resumeCandidate, setResumeCandidate] = useState<SessionState | undefined>()
+  const [studyOperatorInput, setStudyOperatorInput] = useState('')
   const [consentChecked, setConsentChecked] = useState(false)
   const [visionConfirmed, setVisionConfirmed] = useState(false)
   const [demographicsForm, setDemographicsForm] = useState<Demographics>(defaultDemographics())
@@ -219,6 +233,7 @@ export function App() {
     const devSession = createSession({
       participantNumber,
       assignedOrder,
+      studyOperator: studyOperatorInput.trim() || undefined,
       stage: 'block_intro',
       demographics: defaultDemographics(),
       consentGiven: true,
@@ -228,7 +243,7 @@ export function App() {
   }
 
   const startFromConsent = () => {
-    setSession(createSession())
+    setSession(createSession({ studyOperator: studyOperatorInput.trim() || undefined }))
     setMode('landing')
   }
 
@@ -456,16 +471,24 @@ export function App() {
     })
   }
 
-  const enterFullscreen = async () => {
+  const toggleFullscreen = async () => {
     try {
-      if (!document.fullscreenElement) {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen()
+      } else {
         await document.documentElement.requestFullscreen()
       }
       setEnvironmentMessage('')
     } catch {
-      setEnvironmentMessage('Could not enter fullscreen. Please use browser fullscreen and try again.')
+      setEnvironmentMessage('Could not change fullscreen mode. Please use browser fullscreen controls and try again.')
     }
   }
+
+  const fullscreenControl = (
+    <button className="fullscreen-toggle secondary" onClick={toggleFullscreen}>
+      {isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+    </button>
+  )
 
   const exportTrialCsv = () => {
     if (!session) return
@@ -492,6 +515,7 @@ export function App() {
       JSON.stringify(
         {
           participant_id: session.participantId,
+          study_operator: session.studyOperator ?? '',
           assigned_order: orderToLabel(session.assignedOrder),
           raw_events: session.rawEvents,
           trial_summaries: session.trialSummaries,
@@ -504,9 +528,47 @@ export function App() {
     )
   }
 
+  const exportCodebook = () => {
+    const codebook = buildExportCodebook()
+    downloadTextFile('study_export_codebook.json', JSON.stringify(codebook, null, 2), 'application/json;charset=utf-8')
+    downloadTextFile('study_export_codebook.md', buildCodebookMarkdown(codebook), 'text/markdown;charset=utf-8')
+  }
+
+  const exportAllAsZip = async () => {
+    if (!session) return
+
+    const zip = new JSZip()
+    const participantId = session.participantId
+    zip.file(`${participantId}_trials.csv`, toCsv(toTrialRows(session)))
+    zip.file(`${participantId}_likert.csv`, toCsv(toLikertRows(session)))
+    zip.file(`${participantId}_participant_summary.csv`, toCsv([buildParticipantSummary(session)]))
+    zip.file(
+      `${participantId}_raw_events.json`,
+      JSON.stringify(
+        {
+          participant_id: session.participantId,
+          study_operator: session.studyOperator ?? '',
+          assigned_order: orderToLabel(session.assignedOrder),
+          raw_events: session.rawEvents,
+          trial_summaries: session.trialSummaries,
+          likert_rows: session.blockLikerts,
+        },
+        null,
+        2,
+      ),
+    )
+    const codebook = buildExportCodebook()
+    zip.file('study_export_codebook.json', JSON.stringify(codebook, null, 2))
+    zip.file('study_export_codebook.md', buildCodebookMarkdown(codebook))
+
+    const blob = await zip.generateAsync({ type: 'blob' })
+    downloadBlobFile(`${participantId}_all_exports.zip`, blob)
+  }
+
   if (!session) {
     return (
       <main className="app-shell">
+        {fullscreenControl}
         <section className="panel">
           <h1>EECS 4441 HCI Visual Encoding Study</h1>
           <p>This study compares colour-coded, shape-coded, and combined encodings in a visual search task.</p>
@@ -515,6 +577,17 @@ export function App() {
             <li>You may withdraw at any time without penalty.</li>
             <li>Total duration: about 8-10 minutes.</li>
           </ul>
+
+          <label>
+            Study operator (optional)
+            <input
+              type="text"
+              value={studyOperatorInput}
+              onChange={(event) => setStudyOperatorInput(event.target.value)}
+              placeholder="e.g., Researcher-01"
+              aria-label="Study operator name"
+            />
+          </label>
 
           {mode === 'withdrawn' && <p className="warning">You withdrew from the session. You can close this page now.</p>}
 
@@ -566,6 +639,7 @@ export function App() {
   if (session.stage === 'consent') {
     return (
       <main className="app-shell">
+        {fullscreenControl}
         <section className="panel">
           <h1>Consent Form</h1>
           <p>
@@ -613,6 +687,7 @@ export function App() {
   if (session.stage === 'demographics') {
     return (
       <main className="app-shell">
+        {fullscreenControl}
         <section className="panel">
           <h1>Demographics</h1>
           <p>Please answer the following non-identifying questions.</p>
@@ -681,6 +756,7 @@ export function App() {
   if (session.stage === 'block_intro' && currentBlock) {
     return (
       <main className="app-shell">
+        {fullscreenControl}
         <section className="panel">
           <h1>
             Block {session.currentBlockIndex + 1} of {session.blocks.length}: {readableCondition(currentBlock.condition)}
@@ -700,8 +776,8 @@ export function App() {
           {environmentMessage && <p className="warning">{environmentMessage}</p>}
 
           <div className="row-actions">
-            <button className="secondary" onClick={enterFullscreen}>
-              Enter fullscreen
+            <button className="secondary" onClick={toggleFullscreen}>
+              {isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
             </button>
             <button onClick={startBlock}>Start block</button>
             <button className="danger" onClick={handleWithdraw}>
@@ -716,6 +792,7 @@ export function App() {
   if (session.stage === 'practice_transition' && currentBlock) {
     return (
       <main className="app-shell">
+        {fullscreenControl}
         <section className="panel">
           <h1>Practice Complete</h1>
           <p>You have completed practice for this block.</p>
@@ -732,6 +809,7 @@ export function App() {
   if (session.stage === 'trial' && currentBlock && currentTrial) {
     return (
       <main className="app-shell full">
+        {fullscreenControl}
         <section className="top-bar">
           <div>Block {session.currentBlockIndex + 1} of {session.blocks.length}</div>
           <div>
@@ -809,6 +887,7 @@ export function App() {
   if (session.stage === 'post_block' && currentBlock) {
     return (
       <main className="app-shell">
+        {fullscreenControl}
         <section className="panel">
           <h1>Post-block Ratings</h1>
           <p>
@@ -871,6 +950,7 @@ export function App() {
   if (session.stage === 'break') {
     return (
       <main className="app-shell">
+        {fullscreenControl}
         <section className="panel">
           <h1>Short Break</h1>
           <p>Take a brief pause. Continue when ready for the next condition.</p>
@@ -886,15 +966,18 @@ export function App() {
 
   return (
     <main className="app-shell">
+      {fullscreenControl}
       <section className="panel">
         <h1>Study Complete</h1>
         <p>Thank you for participating. Please download your data files now.</p>
 
         <div className="row-actions wrap">
+          <button className="secondary" onClick={exportAllAsZip}>Download all exports (ZIP)</button>
           <button onClick={exportTrialCsv}>Download trial CSV</button>
           <button onClick={exportLikertCsv}>Download Likert CSV</button>
           <button onClick={exportParticipantCsv}>Download participant summary CSV</button>
           <button onClick={exportRawJson}>Download raw JSON log</button>
+          <button onClick={exportCodebook}>Download codebook (JSON + MD)</button>
         </div>
 
         <div className="summary-box">

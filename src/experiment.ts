@@ -31,7 +31,7 @@ export const SHAPES = [
 ] as const
 
 export const DEFAULT_PRACTICE_TRIALS = 3
-export const DEFAULT_MEASURED_TRIALS = 16
+export const DEFAULT_MEASURED_TRIALS = 10
 
 export function getLatinSquareOrder(participantNumber: number): Condition[] {
   return LATIN_SQUARE_3[participantNumber % 3]
@@ -56,42 +56,47 @@ export function shuffle<T>(array: T[], rand: () => number): T[] {
 }
 
 function buildBalancedIndices(length: number, count: number, rand: () => number): number[] {
-  const base = Array.from({ length: count }, (_, i) => i % length)
-  return shuffle(base, rand)
-}
+  if (count <= 0 || length <= 0) return []
 
-function buildExactBalancedIndices(length: number, count: number, rand: () => number): number[] {
-  if (count % length !== 0) {
-    throw new Error(`Measured trials (${count}) must be divisible by feature count (${length}) for exact balancing`)
-  }
+  const baseRepeats = Math.floor(count / length)
+  const remainder = count % length
 
-  const repeats = count / length
-  const base: number[] = []
+  const indices: number[] = []
   for (let i = 0; i < length; i += 1) {
-    for (let j = 0; j < repeats; j += 1) {
-      base.push(i)
+    for (let j = 0; j < baseRepeats; j += 1) {
+      indices.push(i)
     }
   }
-  return shuffle(base, rand)
+
+  if (remainder > 0) {
+    const extraIndices = shuffle(Array.from({ length }, (_, i) => i), rand).slice(0, remainder)
+    indices.push(...extraIndices)
+  }
+
+  return shuffle(indices, rand)
 }
 
-function buildItemsForColorOnlyTrial(): StimulusItem[] {
-  return COLORS.map((color, index) => ({
+function buildItemsForColorOnlyTrial(trialSeed: number): StimulusItem[] {
+  const rand = seededRandom(trialSeed)
+  const order = shuffle(Array.from({ length: COLORS.length }, (_, i) => i), rand)
+  return order.map((colorIndex, index) => ({
     id: `item_${index + 1}`,
-    colorName: color.name,
-    colorHex: color.hex,
+    colorName: COLORS[colorIndex].name,
+    colorHex: COLORS[colorIndex].hex,
     shapeName: 'circle',
     shapeSymbol: '●',
   }))
 }
 
-function buildItemsForShapeOnlyTrial(): StimulusItem[] {
-  return SHAPES.map((shape, index) => ({
+function buildItemsForShapeOnlyTrial(trialSeed: number): StimulusItem[] {
+  const rand = seededRandom(trialSeed)
+  const order = shuffle(Array.from({ length: SHAPES.length }, (_, i) => i), rand)
+  return order.map((shapeIndex, index) => ({
     id: `item_${index + 1}`,
     colorName: 'black',
     colorHex: '#111111',
-    shapeName: shape.name,
-    shapeSymbol: shape.symbol,
+    shapeName: SHAPES[shapeIndex].name,
+    shapeSymbol: SHAPES[shapeIndex].symbol,
   }))
 }
 
@@ -165,8 +170,8 @@ export function generateBlockPlan(args: {
 
   const practiceColorIndices = buildBalancedIndices(COLORS.length, practiceTrials, rand)
   const practiceShapeIndices = buildBalancedIndices(SHAPES.length, practiceTrials, rand)
-  const measuredColorIndices = buildExactBalancedIndices(COLORS.length, measuredTrials, rand)
-  const measuredShapeIndices = buildExactBalancedIndices(SHAPES.length, measuredTrials, rand)
+  const measuredColorIndices = buildBalancedIndices(COLORS.length, measuredTrials, rand)
+  const measuredShapeIndices = buildBalancedIndices(SHAPES.length, measuredTrials, rand)
 
   const balancedColorIndices = [...practiceColorIndices, ...measuredColorIndices]
   const balancedShapeIndices = [...practiceShapeIndices, ...measuredShapeIndices]
@@ -181,9 +186,9 @@ export function generateBlockPlan(args: {
 
     const items =
       args.condition === 'color'
-        ? buildItemsForColorOnlyTrial()
+        ? buildItemsForColorOnlyTrial(trialSeed)
         : args.condition === 'shape'
-          ? buildItemsForShapeOnlyTrial()
+          ? buildItemsForShapeOnlyTrial(trialSeed)
           : buildCombinedItemsForTarget(trialSeed, targetColor, targetShape)
 
     const correctItem = findItemForTarget(items, targetColor, targetShape, args.condition)

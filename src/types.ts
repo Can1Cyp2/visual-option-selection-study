@@ -112,6 +112,7 @@ export interface SessionState {
   version: number
   participantId: string
   participantNumber: number
+  studyOperator?: string
   assignedOrder: Condition[]
   stage: Stage
   consentGiven: boolean
@@ -129,6 +130,7 @@ export interface SessionState {
 export interface ParticipantSummary {
   participant_id: string
   participant_number: number
+  study_operator: string
   assigned_order: string
   age_bracket: string
   computer_use_frequency: string
