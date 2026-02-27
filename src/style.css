@@ -240,6 +240,13 @@ legend {
   background: #f8fafc;
 }
 
+.fullscreen-toggle {
+  position: fixed;
+  left: 1rem;
+  top: 1rem;
+  z-index: 40;
+}
+
 .meta-toggle {
   position: static;
 }
@@ -274,6 +281,11 @@ legend {
 }
 
 @media (max-width: 900px) {
+  .fullscreen-toggle {
+    left: 0.6rem;
+    top: 0.6rem;
+  }
+
   .grid {
     --stimulus-height: 160px;
   }

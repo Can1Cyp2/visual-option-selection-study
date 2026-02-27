@@ -23,7 +23,7 @@ npm run test
 3. Three counterbalanced condition blocks
    - Block intro
   - 3 practice trials (excluded)
-   - Measured trials
+  - 10 measured trials
 4. Post-block 5-point Likert ratings
 5. Completion and export
 
@@ -45,10 +45,12 @@ This is a single-factor, three-level within-subjects (repeated measures) control
 - Shape-only: all items are black, shapes vary, prompt is `Select the <shape>`.
 - Combined: both colour and shape vary, prompt is `Select the <colour> <shape>`.
 - For every trial, the prompted target is guaranteed to exist exactly as a clickable item.
-- Measured trials are exactly balanced:
-  - colour-only block: each colour appears equally often as target
-  - shape-only block: each shape appears equally often as target
-  - combined block: both colour and shape target marginals are exactly equal
+- Measured trials use near-even balancing:
+  - with 10 measured trials and 8 feature categories, balancing is near-even (difference at most 1)
+  - colour-only block: colour targets near-even
+  - shape-only block: shape targets near-even
+  - combined block: colour and shape marginals near-even
+  - the extra (repeated) categories in 10-of-8 balancing are randomized per block (seeded), avoiding fixed-category bias
 
 ## Timing and error logic
 - Timed interval = prompt/grid onset (post-render) to correct click.
@@ -109,6 +111,13 @@ Use `?dev=1` in URL to enable quick condition preview mode.
 - Larger prompt and stimulus sizes for visibility.
 - ARIA labels on clickable items.
 - Combined condition avoids colour-only encoding.
+
+## Proposal alignment notes
+- Independent variable: Visual Encoding Condition with 3 levels (colour-only, shape-only, combined colour+shape).
+- Dependent variables: reaction time (ms), error count, post-condition Likert ratings (clarity, ease, preference).
+- Counterbalancing: standard 3-condition Latin square orders (ABC, BCA, CAB) assigned by participant number mod 3.
+- Task: visual search in 8-item grid; prompt onset to correct click timing; incorrect click logged + feedback then continue.
+- Practice trials are excluded from analysis via `included_in_analysis=false`.
 
 ## Verification tests
 Automated unit tests cover:
